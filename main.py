@@ -192,24 +192,15 @@ class SunSpecGUI:
                                    command=self.clear_log)
         self.clear_log_btn.pack(side=tk.LEFT)
         
-        # 自动保存日志勾选框
-        self.auto_save_log_var = tk.BooleanVar(value=True)
+        # 自动保存日志勾选框 - 默认不勾选
+        self.auto_save_log_var = tk.BooleanVar(value=False)
         self.auto_save_check = ttk.Checkbutton(log_btn_frame, text=self.language_manager.get_text("auto_save_log"), 
-                                          variable=self.auto_save_log_var)
+                                          variable=self.auto_save_log_var, command=self.on_auto_save_changed)
         self.auto_save_check.pack(side=tk.LEFT, padx=(10, 0))
         
-        # 日志文件路径显示
-        self.log_file_label = ttk.Label(log_btn_frame, text=self.language_manager.get_text("log_file"))
-        self.log_file_label.pack(side=tk.LEFT, padx=(10, 2))
-        
-        self.log_file_var = tk.StringVar(value=self.log_file_path)
-        log_file_entry = ttk.Entry(log_btn_frame, textvariable=self.log_file_var, width=30, state="readonly")
-        log_file_entry.pack(side=tk.LEFT, padx=(0, 5))
-        
-        # 选择日志文件按钮
-        self.select_file_btn = ttk.Button(log_btn_frame, text=self.language_manager.get_text("select_file"), 
-                                     command=self.select_log_file)
-        self.select_file_btn.pack(side=tk.LEFT)
+        # 隐藏文件路径相关变量
+        self.log_file_path = None
+        self.log_file_var = tk.StringVar(value="未选择文件")
 
         # 状态栏
         self.status_var = tk.StringVar(value=self.language_manager.get_text("ready"))
@@ -286,10 +277,6 @@ class SunSpecGUI:
             self.clear_log_btn.configure(text=self.language_manager.get_text("clear_log"))
         if hasattr(self, 'auto_save_check'):
             self.auto_save_check.configure(text=self.language_manager.get_text("auto_save_log"))
-        if hasattr(self, 'select_file_btn'):
-            self.select_file_btn.configure(text=self.language_manager.get_text("select_file"))
-        if hasattr(self, 'log_file_label'):
-            self.log_file_label.configure(text=self.language_manager.get_text("log_file"))
 
     def update_data_tables_text(self):
         """更新数据表格的文本"""
@@ -312,17 +299,59 @@ class SunSpecGUI:
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"SunSpec_Log_{timestamp}.txt"
 
+    def on_auto_save_changed(self):
+        """自动保存日志勾选框状态改变时的处理"""
+        if self.auto_save_log_var.get():
+            # 勾选时，直接弹出文件选择对话框
+            self.select_log_file()
+        else:
+            # 取消勾选时，清除文件路径
+            self.log_file_path = None
+            self.log_file_var.set("未选择文件" if self.language_manager.get_current_language() == "zh_CN" else "No file selected")
+
     def select_log_file(self):
         """选择日志文件"""
         from tkinter import filedialog
+        import time
+        import os
+        
+        # 生成默认文件名
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        default_filename = f"SunSpec_Log_{timestamp}.txt"
+        
+        # 获取用户文档目录作为默认保存位置
+        try:
+            import os.path
+            default_dir = os.path.expanduser("~/Documents")
+            if not os.path.exists(default_dir):
+                default_dir = os.getcwd()  # 如果文档目录不存在，使用当前目录
+        except:
+            default_dir = os.getcwd()
+        
         filename = filedialog.asksaveasfilename(
             defaultextension=".txt",
             filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-            title="选择日志文件"
+            title="选择日志文件" if self.language_manager.get_current_language() == "zh_CN" else "Select Log File",
+            initialdir=default_dir,
+            initialfile=default_filename
         )
         if filename:
             self.log_file_path = filename
             self.log_file_var.set(filename)
+            # 立即创建文件
+            try:
+                with open(self.log_file_path, 'w', encoding='utf-8') as f:
+                    f.write(f"# SunSpec Modbus Log File\n")
+                    f.write(f"# Created: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"# Language: {self.language_manager.get_current_language()}\n")
+                    f.write(f"# File: {os.path.basename(filename)}\n\n")
+            except Exception as e:
+                messagebox.showerror("错误", f"创建日志文件失败: {str(e)}")
+                # 如果创建失败，取消勾选
+                self.auto_save_log_var.set(False)
+        else:
+            # 如果用户取消选择，取消勾选
+            self.auto_save_log_var.set(False)
 
     def log_message(self, message):
         """添加日志消息"""
@@ -335,8 +364,9 @@ class SunSpecGUI:
         self.log_text.see(tk.END)
         self.root.update_idletasks()
         
-        # 如果开启了自动保存，则写入文件
-        if hasattr(self, 'auto_save_log_var') and self.auto_save_log_var.get():
+        # 如果开启了自动保存且有有效的文件路径，则写入文件
+        if (hasattr(self, 'auto_save_log_var') and self.auto_save_log_var.get() and 
+            hasattr(self, 'log_file_path') and self.log_file_path):
             try:
                 with open(self.log_file_path, 'a', encoding='utf-8') as f:
                     f.write(log_entry)
@@ -350,10 +380,13 @@ class SunSpecGUI:
         """清空日志"""
         self.log_text.delete(1.0, tk.END)
         # 如果开启了自动保存，也清空文件
-        if hasattr(self, 'auto_save_log_var') and self.auto_save_log_var.get():
+        if (hasattr(self, 'auto_save_log_var') and self.auto_save_log_var.get() and 
+            hasattr(self, 'log_file_path') and self.log_file_path):
             try:
+                import time
                 with open(self.log_file_path, 'w', encoding='utf-8') as f:
-                    f.write("")  # 清空文件
+                    f.write(f"# SunSpec Modbus Log File\n")
+                    f.write(f"# Cleared: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
             except Exception as e:
                 self.log_text.insert(tk.END, f"清空日志文件失败: {str(e)}\n")
 

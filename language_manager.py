@@ -64,7 +64,9 @@ class LanguageManager:
                 "scan_complete": "扫描完成",
                 "success": "成功",
                 "failed": "失败",
-                "format_error": "格式错误"
+                "format_error": "格式错误",
+                "no_file_selected": "未选择文件",
+                "select_log_file": "选择日志文件"
             },
             "en_US": {
                 "window_title": "SunSpec Modbus Protocol Upper Computer",
@@ -116,7 +118,9 @@ class LanguageManager:
                 "scan_complete": "Scan complete",
                 "success": "Success",
                 "failed": "Failed",
-                "format_error": "Format Error"
+                "format_error": "Format Error",
+                "no_file_selected": "No file selected",
+                "select_log_file": "Select Log File"
             }
         }
     
