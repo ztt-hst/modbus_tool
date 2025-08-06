@@ -8,115 +8,307 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 import time
+import serial.tools.list_ports
+
+# 添加语言管理器导入
+try:
+    from language_manager import LanguageManager
+except ImportError:
+    # 如果导入失败，创建一个简单的默认类
+    class LanguageManager:
+        def get_text(self, key, default=None):
+            return default or key
 
 class DataTableFrame(ttk.Frame):
-    """数据表格框架"""
-    
-    def __init__(self, parent, **kwargs):
+    def __init__(self, parent, table_id, protocol, modbus_client, main_window=None, language_manager=None, **kwargs):
         super().__init__(parent, **kwargs)
+        self.table_id = table_id
+        self.protocol = protocol
+        self.modbus_client = modbus_client
+        self.main_window = main_window
+        self.language_manager = language_manager or LanguageManager()
+        self.fields = protocol.get_table_info(table_id)["fields"]
+        self.entries = {}
+        self.headers = []  # 保存表头引用
         self.setup_table()
-    
+
     def setup_table(self):
-        """设置数据表格"""
-        # 创建表格
-        columns = ('字段名', '值', '原始值', '单位', '类型', '描述', '访问权限')
-        self.tree = ttk.Treeview(self, columns=columns, show='headings', height=20)
+        headers = [
+            self.language_manager.get_text("field_name"),
+            self.language_manager.get_text("value"),
+            self.language_manager.get_text("raw_value"),
+            self.language_manager.get_text("unit"),
+            self.language_manager.get_text("type"),
+            self.language_manager.get_text("description"),
+            self.language_manager.get_text("access_rights"),
+            self.language_manager.get_text("read"),
+            self.language_manager.get_text("write_value"),
+            self.language_manager.get_text("write"),
+            self.language_manager.get_text("write_status")
+        ]
         
-        # 设置列标题和宽度
-        column_widths = {
-            '字段名': 120,
-            '值': 100,
-            '原始值': 80,
-            '单位': 60,
-            '类型': 80,
-            '描述': 200,
-            '访问权限': 80
-        }
+        col_widths = [120, 80, 80, 60, 70, 200, 60, 40, 80, 40, 80]
+        self.headers = []  # 保存表头引用以便更新
         
-        for col in columns:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=column_widths.get(col, 100))
+        for col, h in enumerate(headers):
+            header_label = ttk.Label(self, text=h, anchor='center', borderwidth=1, relief='solid')
+            header_label.grid(row=0, column=col, sticky='nsew', padx=1, pady=1)
+            self.headers.append(header_label)  # 保存引用
+            self.grid_columnconfigure(col, weight=1, minsize=col_widths[col])
         
-        # 添加滚动条
-        scrollbar = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-        
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-    
-    def display_data(self, data):
-        """显示数据"""
-        # 清空现有数据
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        
-        # 添加新数据
-        for field_name, field_data in data.items():
-            value = field_data['value']
-            raw_value = field_data['raw']
-            unit = field_data['unit']
-            field_type = field_data['type']
-            description = field_data.get('description', '')
-            access = field_data.get('access', 'r')
+        for row, (field_name, field_info) in enumerate(self.fields.items(), start=1):
+            value_var = tk.StringVar(value='-')
+            raw_var = tk.StringVar(value='-')
+            write_var = tk.StringVar(value='')
+            write_status_var = tk.StringVar(value='')
             
-            # 格式化显示
-            if isinstance(value, float):
-                value_str = f"{value:.6f}"
+            # 使用 label 作为显示名
+            display_name = field_info.get('label', field_name)
+            ttk.Label(self, text=display_name).grid(row=row, column=0, sticky='nsew')
+            
+            ttk.Label(self, textvariable=value_var).grid(row=row, column=1, sticky='nsew')
+            ttk.Label(self, textvariable=raw_var).grid(row=row, column=2, sticky='nsew')
+            ttk.Label(self, text=field_info.get('unit', '')).grid(row=row, column=3, sticky='nsew')
+            ttk.Label(self, text=field_info.get('type', '')).grid(row=row, column=4, sticky='nsew')
+            ttk.Label(self, text=field_info.get('description', '')).grid(row=row, column=5, sticky='nsew')
+            ttk.Label(self, text=field_info.get('access', 'r')).grid(row=row, column=6, sticky='nsew')
+            
+            btn_read = ttk.Button(self, text=self.language_manager.get_text("read"), width=4, 
+                                 command=lambda fn=field_name: self.read_field(fn))
+            btn_read.grid(row=row, column=7, sticky='nsew')
+            
+            # 根据访问权限决定是否显示写值输入框
+            if field_info.get('access', 'r') == 'rw':
+                # 有写入权限，显示输入框
+                entry_write = ttk.Entry(self, textvariable=write_var, width=8)
+                entry_write.grid(row=row, column=8, sticky='nsew')
+                
+                # 显示写按钮
+                btn_write = ttk.Button(self, text=self.language_manager.get_text("write"), width=4, 
+                                     command=lambda fn=field_name: self.write_field(fn))
+                btn_write.grid(row=row, column=9, sticky='nsew')
             else:
-                value_str = str(value)
+                # 只读字段，隐藏输入框和写按钮
+                ttk.Label(self, text='').grid(row=row, column=8, sticky='nsew')  # 空的写值列
+                ttk.Label(self, text='').grid(row=row, column=9, sticky='nsew')  # 空的写按钮列
             
-            self.tree.insert('', 'end', values=(
-                field_name, value_str, raw_value, unit, field_type, description, access
-            ))
-    
+            ttk.Label(self, textvariable=write_status_var).grid(row=row, column=10, sticky='nsew')
+            self.entries[field_name] = (value_var, raw_var, write_var, write_status_var)
+
+    def read_field(self, field_name):
+        # 检查是否已连接
+        if not self.modbus_client.is_connected():
+            messagebox.showwarning(self.language_manager.get_text("warning"), 
+                                 self.language_manager.get_text("please_connect_first"))
+            return
+        
+        # 修正：从主窗口获取扫描到的模型地址
+        if self.main_window and hasattr(self.main_window, 'model_base_addrs'):
+            if self.table_id in self.main_window.model_base_addrs:
+                base_addr = self.main_window.model_base_addrs[self.table_id]
+            else:
+                base_addr = self.protocol.base_address
+        else:
+            base_addr = self.protocol.base_address
+        
+        offset = self.fields[field_name]["offset"]
+        addr = base_addr + offset
+        length = self.fields[field_name]["size"]
+        
+        # 读取数据
+        data = self.modbus_client.read_holding_registers(addr, length)
+        if data:
+            # 使用专门的单字段解析方法
+            field_data = self.protocol.parse_single_field(self.table_id, field_name, data)
+            if field_data:
+                self.entries[field_name][0].set(str(field_data['value']))
+                self.entries[field_name][1].set(str(field_data['raw']))
+            else:
+                self.entries[field_name][0].set("Err")
+                self.entries[field_name][1].set("Err")
+        else:
+            self.entries[field_name][0].set("Err")
+            self.entries[field_name][1].set("Err")
+
+    def write_field(self, field_name):
+        # 检查是否已连接
+        if not self.modbus_client.is_connected():
+            messagebox.showwarning(self.language_manager.get_text("warning"), 
+                                 self.language_manager.get_text("please_connect_first"))
+            return
+        
+        # 修正：从主窗口获取扫描到的模型地址
+        if self.main_window and hasattr(self.main_window, 'model_base_addrs'):
+            if self.table_id in self.main_window.model_base_addrs:
+                base_addr = self.main_window.model_base_addrs[self.table_id]
+            else:
+                base_addr = self.protocol.base_address
+        else:
+            base_addr = self.protocol.base_address
+        
+        offset = self.fields[field_name]["offset"]
+        addr = base_addr + offset
+        value_str = self.entries[field_name][2].get()
+        try:
+            value = int(value_str)
+        except Exception:
+            self.entries[field_name][3].set(self.language_manager.get_text("format_error"))
+            return
+        ok = self.modbus_client.write_holding_register(addr, value)
+        self.entries[field_name][3].set(self.language_manager.get_text("success") if ok else self.language_manager.get_text("failed"))
+
+    def display_data(self, data):
+        for field_name, v in data.items():
+            if field_name in self.entries:
+                self.entries[field_name][0].set(str(v['value']))
+                self.entries[field_name][1].set(str(v['raw']))
+
     def clear_data(self):
-        """清空数据"""
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        for field_name, (value_var, raw_var, _, write_status_var) in self.entries.items():
+            value_var.set('-')
+            raw_var.set('-')
+            write_status_var.set('')
+
+    def update_language(self, language_manager):
+        """更新语言"""
+        self.language_manager = language_manager
+        
+        # 更新表头
+        new_headers = [
+            self.language_manager.get_text("field_name"),
+            self.language_manager.get_text("value"),
+            self.language_manager.get_text("raw_value"),
+            self.language_manager.get_text("unit"),
+            self.language_manager.get_text("type"),
+            self.language_manager.get_text("description"),
+            self.language_manager.get_text("access_rights"),
+            self.language_manager.get_text("read"),
+            self.language_manager.get_text("write_value"),
+            self.language_manager.get_text("write"),
+            self.language_manager.get_text("write_status")
+        ]
+        
+        for i, header_label in enumerate(self.headers):
+            if i < len(new_headers):
+                header_label.configure(text=new_headers[i])
+        
+        # 更新按钮文本
+        for row in range(1, len(self.fields) + 1):
+            # 更新读按钮
+            read_btn = self.grid_slaves(row=row, column=7)[0]
+            if isinstance(read_btn, ttk.Button):
+                read_btn.configure(text=self.language_manager.get_text("read"))
+            
+            # 更新写按钮
+            write_btn = self.grid_slaves(row=row, column=9)[0]
+            if isinstance(write_btn, ttk.Button):
+                write_btn.configure(text=self.language_manager.get_text("write"))
 
 class ConnectionFrame(ttk.LabelFrame):
     """连接设置框架"""
-    
-    def __init__(self, parent, **kwargs):
-        super().__init__(parent, text="连接设置", padding=10, **kwargs)
+    def __init__(self, parent, language_manager=None, **kwargs):
+        # 获取语言管理器
+        if language_manager is None:
+            from language_manager import LanguageManager
+            language_manager = LanguageManager()
+        
+        # 使用语言管理器获取文本
+        frame_text = language_manager.get_text("connection_settings")
+        super().__init__(parent, text=frame_text, padding=10, **kwargs)
+        
+        self.language_manager = language_manager
         self.setup_connection_controls()
-    
+
     def setup_connection_controls(self):
-        """设置连接控件"""
-        # TCP连接设置
-        tcp_frame = ttk.Frame(self)
-        tcp_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        ttk.Label(tcp_frame, text="TCP连接:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
-        self.tcp_host_var = tk.StringVar(value="192.168.1.100")
-        ttk.Entry(tcp_frame, textvariable=self.tcp_host_var, width=15).grid(row=0, column=1, padx=(0, 5))
-        
-        ttk.Label(tcp_frame, text="端口:").grid(row=0, column=2, sticky=tk.W, padx=(0, 5))
-        self.tcp_port_var = tk.StringVar(value="502")
-        ttk.Entry(tcp_frame, textvariable=self.tcp_port_var, width=8).grid(row=0, column=3, padx=(0, 10))
-        
-        self.connect_tcp_btn = ttk.Button(tcp_frame, text="连接TCP")
-        self.connect_tcp_btn.grid(row=0, column=4, padx=(0, 5))
-        
-        self.disconnect_btn = ttk.Button(tcp_frame, text="断开")
-        self.disconnect_btn.grid(row=0, column=5)
-        
-        # RTU连接设置
+        # 只保留RTU连接设置
         rtu_frame = ttk.Frame(self)
         rtu_frame.pack(fill=tk.X)
         
-        ttk.Label(rtu_frame, text="RTU连接:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
-        self.rtu_port_var = tk.StringVar(value="COM1")
-        ttk.Entry(rtu_frame, textvariable=self.rtu_port_var, width=8).grid(row=0, column=1, padx=(0, 5))
+        # 第一行：COM口和波特率
+        self.rtu_connection_label = ttk.Label(rtu_frame, text=self.language_manager.get_text("rtu_connection"))
+        self.rtu_connection_label.grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
         
-        ttk.Label(rtu_frame, text="波特率:").grid(row=0, column=2, sticky=tk.W, padx=(0, 5))
+        # 自动识别COM口
+        self.rtu_port_var = tk.StringVar()
+        self.port_combo = ttk.Combobox(rtu_frame, textvariable=self.rtu_port_var, width=12)
+        self.port_combo.grid(row=0, column=1, padx=(0, 5))
+        
+        # 刷新COM口按钮
+        self.refresh_btn = ttk.Button(rtu_frame, text=self.language_manager.get_text("refresh"), 
+                                     command=self.refresh_ports, width=6)
+        self.refresh_btn.grid(row=0, column=2, padx=(0, 5))
+        
+        self.baud_rate_label = ttk.Label(rtu_frame, text=self.language_manager.get_text("baud_rate"))
+        self.baud_rate_label.grid(row=0, column=3, sticky=tk.W, padx=(0, 5))
         self.baudrate_var = tk.StringVar(value="9600")
         ttk.Combobox(rtu_frame, textvariable=self.baudrate_var, 
                      values=["9600", "19200", "38400", "57600", "115200"], 
-                     width=8).grid(row=0, column=3, padx=(0, 10))
+                     width=8).grid(row=0, column=4, padx=(0, 10))
         
-        self.connect_rtu_btn = ttk.Button(rtu_frame, text="连接RTU")
-        self.connect_rtu_btn.grid(row=0, column=4, padx=(0, 5))
+        # 第二行：从站ID和其他设置
+        self.slave_id_label = ttk.Label(rtu_frame, text=self.language_manager.get_text("slave_id"))
+        self.slave_id_label.grid(row=1, column=0, sticky=tk.W, padx=(0, 5))
+        self.slave_id_var = tk.StringVar(value="1")
+        slave_id_spinbox = ttk.Spinbox(rtu_frame, textvariable=self.slave_id_var, 
+                                       from_=1, to=247, width=8)
+        slave_id_spinbox.grid(row=1, column=1, padx=(0, 5))
+        
+        self.timeout_label = ttk.Label(rtu_frame, text=self.language_manager.get_text("timeout_seconds"))
+        self.timeout_label.grid(row=1, column=2, sticky=tk.W, padx=(0, 5))
+        self.timeout_var = tk.StringVar(value="10")
+        timeout_spinbox = ttk.Spinbox(rtu_frame, textvariable=self.timeout_var, 
+                                     from_=1, to=60, width=8)
+        timeout_spinbox.grid(row=1, column=3, padx=(0, 10))
+        
+        # 连接按钮
+        self.connect_rtu_btn = ttk.Button(rtu_frame, text=self.language_manager.get_text("connect_rtu"))
+        self.connect_rtu_btn.grid(row=1, column=4, padx=(0, 5))
+        
+        self.disconnect_btn = ttk.Button(rtu_frame, text=self.language_manager.get_text("disconnect"))
+        self.disconnect_btn.grid(row=1, column=5)
+        
+        # 初始化COM口列表
+        self.refresh_ports()
+
+    def update_language(self, language_manager):
+        """更新语言"""
+        self.language_manager = language_manager
+        
+        # 更新框架标题
+        self.configure(text=self.language_manager.get_text("connection_settings"))
+        
+        # 更新标签文本
+        self.rtu_connection_label.configure(text=self.language_manager.get_text("rtu_connection"))
+        self.refresh_btn.configure(text=self.language_manager.get_text("refresh"))
+        self.baud_rate_label.configure(text=self.language_manager.get_text("baud_rate"))
+        self.slave_id_label.configure(text=self.language_manager.get_text("slave_id"))
+        self.timeout_label.configure(text=self.language_manager.get_text("timeout_seconds"))
+        
+        # 更新按钮文本
+        self.connect_rtu_btn.configure(text=self.language_manager.get_text("connect_rtu"))
+        self.disconnect_btn.configure(text=self.language_manager.get_text("disconnect"))
+
+    def refresh_ports(self):
+        """刷新可用COM口列表"""
+        try:
+            # 获取系统所有可用串口
+            ports = [port.device for port in serial.tools.list_ports.comports()]
+            
+            if ports:
+                self.port_combo['values'] = ports
+                # 如果有COM口，默认选择第一个
+                if not self.rtu_port_var.get() or self.rtu_port_var.get() not in ports:
+                    self.rtu_port_var.set(ports[0])
+            else:
+                self.port_combo['values'] = ['无可用串口']
+                self.rtu_port_var.set('')
+                
+        except Exception as e:
+            # 如果无法获取串口列表，提供默认选项
+            default_ports = ['COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8']
+            self.port_combo['values'] = default_ports
+            if not self.rtu_port_var.get():
+                self.rtu_port_var.set('COM1')
 
 class TableControlFrame(ttk.LabelFrame):
     """表格控制框架"""
@@ -149,4 +341,4 @@ class TableControlFrame(ttk.LabelFrame):
         
         ttk.Label(self, text="刷新间隔(秒):").pack(side=tk.LEFT, padx=(10, 5))
         self.refresh_interval_var = tk.StringVar(value="5")
-        ttk.Entry(self, textvariable=self.refresh_interval_var, width=5).pack(side=tk.LEFT) 
+        ttk.Entry(self, textvariable=self.refresh_interval_var, width=5).pack(side=tk.LEFT)
