@@ -10,7 +10,7 @@ a = Analysis(
         ('model_802.json', '.'),
         ('model_805.json', '.'),
         ('model_899.json', '.'),
-        ('BQC.ico', '.'),  # 添加图标文件
+        ('BQC.ico', '.'),  # 添加图标文件到数据文件
     ],
     hiddenimports=[
         'serial',
@@ -58,5 +58,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='BQC.ico',  # 如果有图标文件，可以在这里指定
+    icon='BQC.ico',  # 设置exe文件的图标
 ) 

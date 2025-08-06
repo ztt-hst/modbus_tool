@@ -18,24 +18,36 @@ class SunSpecProtocol:
         self.load_models()
 
     def load_models(self):
-        """加载所有model_xxx.json文件"""
-        try:
-            model_files = {
-                802: 'model_802.json',
-                805: 'model_805.json', 
-                899: 'model_899.json'
-            }
-            
-            for table_id, filename in model_files.items():
-                filepath = os.path.join(self.model_dir, filename)
-                if os.path.exists(filepath):
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        model_data = json.load(f)
-                        self.models[table_id] = model_data
-                else:
-                    print(f"警告: 找不到模型文件 {filename}")
-        except Exception as e:
-            print(f"加载模型文件失败: {e}")
+        """加载模型定义"""
+        model_files = {
+            802: 'model_802.json',
+            805: 'model_805.json', 
+            899: 'model_899.json'
+        }
+        
+        for table_id, filename in model_files.items():
+            try:
+                # 获取文件路径
+                filepath = self.get_resource_path(filename)
+                
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    model_data = json.load(f)
+                    self.models[table_id] = model_data
+            except Exception as e:
+                print(f"加载模型文件 {filename} 失败: {e}")
+
+    def get_resource_path(self, filename):
+        """获取资源文件路径，支持打包后的路径"""
+        import sys
+        import os
+        
+        if getattr(sys, 'frozen', False):
+            # 如果是打包后的exe
+            base_path = sys._MEIPASS
+            return os.path.join(base_path, filename)
+        else:
+            # 如果是开发环境
+            return filename
 
     def parse_table_data(self, table_id, data):
         """解析表格数据，支持model_xxx.json格式"""

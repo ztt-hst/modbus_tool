@@ -11,11 +11,23 @@ import time
 import json
 import os
 from functools import partial
-
+import sys
 from sunspec_protocol import SunSpecProtocol
 from modbus_client import ModbusClient
 from gui_components import ConnectionFrame, DataTableFrame
 from language_manager import LanguageManager
+
+def get_resource_path(filename):
+        """
+        获取资源文件路径，兼容开发环境和PyInstaller打包后的环境
+        """
+        if getattr(sys, 'frozen', False):
+            # PyInstaller打包后的exe
+            base_path = sys._MEIPASS
+        else:
+            # 源码运行
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, filename)
 
 class SunSpecGUI:
     """SunSpec协议GUI界面"""
@@ -48,15 +60,15 @@ class SunSpecGUI:
         
         self.setup_gui()
         self.bind_events()
-
     def set_window_icon(self):
         """设置窗口图标"""
         try:
-            # 检查图标文件是否存在
-            if os.path.exists('BQC.ico'):
-                self.root.iconbitmap('BQC.ico')
+            # 获取图标文件路径
+            icon_path = get_resource_path('BQC.ico')        
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
             else:
-                print("图标文件 BQC.ico 不存在")
+                print(f"图标文件不存在: {icon_path}")
         except Exception as e:
             print(f"设置窗口图标失败: {e}")
 
@@ -377,18 +389,21 @@ class SunSpecGUI:
                 self.log_text.see(tk.END)
 
     def clear_log(self):
-        """清空日志"""
+        """清空日志显示区域（不清空文件）"""
         self.log_text.delete(1.0, tk.END)
-        # 如果开启了自动保存，也清空文件
+        
+        # 如果开启了自动保存，在日志文件中添加分隔线，但不清空文件内容
         if (hasattr(self, 'auto_save_log_var') and self.auto_save_log_var.get() and 
             hasattr(self, 'log_file_path') and self.log_file_path):
             try:
                 import time
-                with open(self.log_file_path, 'w', encoding='utf-8') as f:
-                    f.write(f"# SunSpec Modbus Log File\n")
-                    f.write(f"# Cleared: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                separator = f"\n# ====== 界面日志清空时间: {time.strftime('%Y-%m-%d %H:%M:%S')} ======\n\n"
+                with open(self.log_file_path, 'a', encoding='utf-8') as f:
+                    f.write(separator)
             except Exception as e:
-                self.log_text.insert(tk.END, f"清空日志文件失败: {str(e)}\n")
+                # 如果写入分隔线失败，只在界面显示错误，不影响文件内容
+                error_msg = f"添加日志分隔线失败: {str(e)}\n"
+                self.log_text.insert(tk.END, error_msg)
 
     def connect_rtu(self):
         """连接RTU Modbus"""
