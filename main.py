@@ -132,8 +132,15 @@ class SunSpecGUI:
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(fill=tk.X, pady=(0, 10))
         self.read_all_tables_btn = ttk.Button(btn_frame, text=self.language_manager.get_text("read_all_tables"), 
-                                         command=self.read_all_tables)
+                                 command=self.read_all_tables)
         self.read_all_tables_btn.pack(side=tk.LEFT)
+
+        # 新增：自动读取全部表格勾选框
+        self.auto_read_all_var = tk.BooleanVar(value=False)
+        self.auto_read_all_check = ttk.Checkbutton(
+            btn_frame, text="自动读取全部表格", variable=self.auto_read_all_var, command=self.on_auto_read_all_changed
+        )
+        self.auto_read_all_check.pack(side=tk.LEFT, padx=(10, 0))
 
         # 创建标签页容器
         self.notebook = ttk.Notebook(main_frame)
@@ -289,6 +296,8 @@ class SunSpecGUI:
             self.clear_log_btn.configure(text=self.language_manager.get_text("clear_log"))
         if hasattr(self, 'auto_save_check'):
             self.auto_save_check.configure(text=self.language_manager.get_text("auto_save_log"))
+        if hasattr(self, 'auto_read_all_check'):
+            self.auto_read_all_check.configure(text=self.language_manager.get_text("auto_read_all_tables"))
 
     def update_data_tables_text(self):
         """更新数据表格的文本"""
@@ -556,11 +565,35 @@ class SunSpecGUI:
         self.model_base_addrs = model_map
         self.log_message(f"{self.language_manager.get_text('scan_complete')}，找到模型: {list(model_map.keys())}")
 
+    def on_auto_read_all_changed(self):
+        """自动读取全部表格勾选框状态改变时的处理"""
+        if self.auto_read_all_var.get():
+            self.start_auto_read_all()
+        else:
+            self.stop_auto_read_all()
+
+    def start_auto_read_all(self):
+        """启动自动读取全部表格"""
+        self._auto_read_all_running = True
+        self.schedule_auto_read_all()
+
+    def stop_auto_read_all(self):
+        """停止自动读取全部表格"""
+        self._auto_read_all_running = False
+
+    def schedule_auto_read_all(self):
+        """调度自动读取全部表格"""
+        if getattr(self, "_auto_read_all_running", False):
+            self.read_all_tables()
+            # 5秒后再次调用
+            self.root.after(5000, self.schedule_auto_read_all)
+
     def run(self):
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.root.mainloop()
 
     def on_closing(self):
+        self.stop_auto_read_all()
         self.modbus_client.disconnect()
         self.root.destroy()
 

@@ -9,6 +9,7 @@ from tkinter import ttk, messagebox
 import threading
 import time
 import serial.tools.list_ports
+import datetime
 
 # 添加语言管理器导入
 try:
@@ -36,7 +37,7 @@ class DataTableFrame(ttk.Frame):
         headers = [
             self.language_manager.get_text("field_name"),
             self.language_manager.get_text("value"),
-            self.language_manager.get_text("raw_value"),
+            self.language_manager.get_text("update_time"),
             self.language_manager.get_text("unit"),
             self.language_manager.get_text("type"),
             self.language_manager.get_text("description"),
@@ -58,7 +59,7 @@ class DataTableFrame(ttk.Frame):
         
         for row, (field_name, field_info) in enumerate(self.fields.items(), start=1):
             value_var = tk.StringVar(value='-')
-            raw_var = tk.StringVar(value='-')
+            update_time_var = tk.StringVar(value='-')
             write_var = tk.StringVar(value='')
             write_status_var = tk.StringVar(value='')
             
@@ -67,7 +68,7 @@ class DataTableFrame(ttk.Frame):
             ttk.Label(self, text=display_name).grid(row=row, column=0, sticky='nsew')
             
             ttk.Label(self, textvariable=value_var).grid(row=row, column=1, sticky='nsew')
-            ttk.Label(self, textvariable=raw_var).grid(row=row, column=2, sticky='nsew')
+            ttk.Label(self, textvariable=update_time_var).grid(row=row, column=2, sticky='nsew')
             ttk.Label(self, text=field_info.get('unit', '')).grid(row=row, column=3, sticky='nsew')
             ttk.Label(self, text=field_info.get('type', '')).grid(row=row, column=4, sticky='nsew')
             ttk.Label(self, text=field_info.get('description', '')).grid(row=row, column=5, sticky='nsew')
@@ -93,7 +94,7 @@ class DataTableFrame(ttk.Frame):
                 ttk.Label(self, text='').grid(row=row, column=9, sticky='nsew')  # 空的写按钮列
             
             ttk.Label(self, textvariable=write_status_var).grid(row=row, column=10, sticky='nsew')
-            self.entries[field_name] = (value_var, raw_var, write_var, write_status_var)
+            self.entries[field_name] = (value_var, update_time_var, write_var, write_status_var)
 
     def read_field(self, field_name):
         # 检查是否已连接
@@ -122,13 +123,14 @@ class DataTableFrame(ttk.Frame):
             field_data = self.protocol.parse_single_field(self.table_id, field_name, data)
             if field_data:
                 self.entries[field_name][0].set(str(field_data['value']))
-                self.entries[field_name][1].set(str(field_data['raw']))
+                now = datetime.datetime.now().strftime("%H:%M:%S")
+                self.entries[field_name][1].set(str(now))
             else:
                 self.entries[field_name][0].set("Err")
-                self.entries[field_name][1].set("Err")
+                self.entries[field_name][1].set("-")
         else:
             self.entries[field_name][0].set("Err")
-            self.entries[field_name][1].set("Err")
+            self.entries[field_name][1].set("-")
 
     def write_field(self, field_name):
         # 检查是否已连接
@@ -158,15 +160,16 @@ class DataTableFrame(ttk.Frame):
         self.entries[field_name][3].set(self.language_manager.get_text("success") if ok else self.language_manager.get_text("failed"))
 
     def display_data(self, data):
+        now = datetime.datetime.now().strftime("%H:%M:%S")
         for field_name, v in data.items():
             if field_name in self.entries:
                 self.entries[field_name][0].set(str(v['value']))
-                self.entries[field_name][1].set(str(v['raw']))
+                self.entries[field_name][1].set(str(now))
 
     def clear_data(self):
-        for field_name, (value_var, raw_var, _, write_status_var) in self.entries.items():
+        for field_name, (value_var, update_time_var, _, write_status_var) in self.entries.items():
             value_var.set('-')
-            raw_var.set('-')
+            update_time_var.set('-')
             write_status_var.set('')
 
     def update_language(self, language_manager):
@@ -177,7 +180,7 @@ class DataTableFrame(ttk.Frame):
         new_headers = [
             self.language_manager.get_text("field_name"),
             self.language_manager.get_text("value"),
-            self.language_manager.get_text("raw_value"),
+            self.language_manager.get_text("update_time"),
             self.language_manager.get_text("unit"),
             self.language_manager.get_text("type"),
             self.language_manager.get_text("description"),
