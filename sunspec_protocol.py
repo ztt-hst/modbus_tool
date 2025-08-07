@@ -104,8 +104,8 @@ class SunSpecProtocol:
                     # 每个寄存器2字节，拼接为字符串
                     chars = []
                     for reg in regs:
-                        chars.append(chr((reg >> 8) & 0xFF))
                         chars.append(chr(reg & 0xFF))
+                        chars.append(chr((reg >> 8) & 0xFF))
                     value = ''.join(chars).rstrip('\x00').strip()
                     raw_value = value
                 else:
@@ -197,8 +197,8 @@ class SunSpecProtocol:
                     # 字符串解析：每个寄存器2字节
                     chars = []
                     for reg in data:
-                        chars.append(chr((reg >> 8) & 0xFF))
                         chars.append(chr(reg & 0xFF))
+                        chars.append(chr((reg >> 8) & 0xFF))
                     value = ''.join(chars).rstrip('\x00').strip()
                     raw_value = value
                     

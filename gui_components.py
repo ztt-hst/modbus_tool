@@ -270,6 +270,17 @@ class ConnectionFrame(ttk.LabelFrame):
         # 初始化COM口列表
         self.refresh_ports()
 
+    def update_buttons_state(self, is_connected):
+        """更新按钮状态"""
+        if is_connected:
+            # 已连接：禁用连接按钮，启用断开按钮
+            self.connect_rtu_btn.configure(state="disabled")
+            self.disconnect_btn.configure(state="normal")
+        else:
+            # 未连接：启用连接按钮，禁用断开按钮
+            self.connect_rtu_btn.configure(state="normal")
+            self.disconnect_btn.configure(state="disabled")
+
     def update_language(self, language_manager):
         """更新语言"""
         self.language_manager = language_manager

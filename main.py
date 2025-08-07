@@ -302,8 +302,19 @@ class SunSpecGUI:
 
     def bind_events(self):
         """绑定事件"""
+        # 绑定连接框架的按钮事件
         self.connection_frame.connect_rtu_btn.config(command=self.connect_rtu)
         self.connection_frame.disconnect_btn.config(command=self.disconnect)
+        
+        # 初始化按钮状态
+        self.update_connection_buttons_state()
+
+    def update_connection_buttons_state(self):
+        """更新连接按钮状态"""
+        is_connected = self.modbus_client.is_connected()
+        
+        # 更新连接框架的按钮状态
+        self.connection_frame.update_buttons_state(is_connected)
 
     def get_default_log_file(self):
         """获取默认日志文件路径"""
@@ -420,6 +431,9 @@ class SunSpecGUI:
             self.status_var.set(f"RTU连接成功: {port}, 从站ID: {slave_id}")
             self.log_message(f"RTU连接成功: {port}, 从站ID: {slave_id}")
             messagebox.showinfo(self.language_manager.get_text("connection_success"), f"已连接到 {port}, 从站ID: {slave_id}")
+            
+            # 更新按钮状态
+            self.update_connection_buttons_state()
         else:
             self.status_var.set("RTU连接失败")
             self.log_message(f"RTU连接失败: {port}")
@@ -430,6 +444,9 @@ class SunSpecGUI:
         self.modbus_client.disconnect()
         self.status_var.set(self.language_manager.get_text("disconnected"))
         self.log_message(self.language_manager.get_text("disconnected"))
+        
+        # 更新按钮状态
+        self.update_connection_buttons_state()
 
     def read_all_tables(self):
         if not self.modbus_client.is_connected():
