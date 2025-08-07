@@ -17,19 +17,37 @@ class SunSpecProtocol:
         self.model_base_addrs = {}  # 新增：保存扫描到的模型地址
         self.load_models()
 
-    def load_models(self):
-        """加载模型定义"""
-        model_files = {
+    def load_models(self, available_models=None):
+        """
+        加载模型定义。
+        available_models: 可用模型ID列表（如[1, 802, 805, 899]），为None时加载全部支持的。
+        """
+        # 支持的模型及其文件名
+        default_model_files = {
+            1: 'model_1.json',
             802: 'model_802.json',
-            805: 'model_805.json', 
+            805: 'model_805.json',
             899: 'model_899.json'
         }
         
+        # 如果传入了扫描到的模型，动态构建文件映射
+        if available_models is not None:
+            model_files = {}
+            for model_id in available_models:
+                if model_id in default_model_files:
+                    model_files[model_id] = default_model_files[model_id]
+                else:
+                    # 动态生成文件名
+                    model_files[model_id] = f'model_{model_id}.json'
+        else:
+            model_files = default_model_files
+
         for table_id, filename in model_files.items():
             try:
-                # 获取文件路径
                 filepath = self.get_resource_path(filename)
-                
+                if not os.path.exists(filepath):
+                    print(f"模型文件 {filename} 不存在，跳过。")
+                    continue
                 with open(filepath, 'r', encoding='utf-8') as f:
                     model_data = json.load(f)
                     self.models[table_id] = model_data

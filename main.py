@@ -43,8 +43,16 @@ class SunSpecGUI:
         
         # 设置窗口标题
         self.root.title(self.language_manager.get_text("window_title"))
-        self.root.geometry("1400x900")
-        
+        #self.root.geometry("1400x900")
+        # 设置窗口大小和位置
+        window_width = 1400
+        window_height = 900
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
         # 设置窗口图标
         self.set_window_icon()
         
@@ -113,20 +121,20 @@ class SunSpecGUI:
                   command=self.scan_models)
         self.scan_model_btn.pack(side=tk.LEFT, padx=(10, 0))
         
-        self.model_802_label = ttk.Label(scan_frame, text="802:")
-        self.model_802_label.pack(side=tk.LEFT)
-        self.model_802_addr_var = tk.StringVar(value="-")
-        ttk.Entry(scan_frame, textvariable=self.model_802_addr_var, width=8, state="readonly").pack(side=tk.LEFT)
+        #self.model_802_label = ttk.Label(scan_frame, text="802:")
+        #self.model_802_label.pack(side=tk.LEFT)
+        #self.model_802_addr_var = tk.StringVar(value="-")
+        #ttk.Entry(scan_frame, textvariable=self.model_802_addr_var, width=8, state="readonly").pack(side=tk.LEFT)
         
-        self.model_805_label = ttk.Label(scan_frame, text="805:")
-        self.model_805_label.pack(side=tk.LEFT)
-        self.model_805_addr_var = tk.StringVar(value="-")
-        ttk.Entry(scan_frame, textvariable=self.model_805_addr_var, width=8, state="readonly").pack(side=tk.LEFT)
+        #self.model_805_label = ttk.Label(scan_frame, text="805:")
+        #self.model_805_label.pack(side=tk.LEFT)
+        #self.model_805_addr_var = tk.StringVar(value="-")
+        #ttk.Entry(scan_frame, textvariable=self.model_805_addr_var, width=8, state="readonly").pack(side=tk.LEFT)
         
-        self.model_899_label = ttk.Label(scan_frame, text="899:")
-        self.model_899_label.pack(side=tk.LEFT)
-        self.model_899_addr_var = tk.StringVar(value="-")
-        ttk.Entry(scan_frame, textvariable=self.model_899_addr_var, width=8, state="readonly").pack(side=tk.LEFT)
+        #self.model_899_label = ttk.Label(scan_frame, text="899:")
+        #self.model_899_label.pack(side=tk.LEFT)
+        #self.model_899_addr_var = tk.StringVar(value="-")
+        #ttk.Entry(scan_frame, textvariable=self.model_899_addr_var, width=8, state="readonly").pack(side=tk.LEFT)
 
         # 总控按钮（只保留读取全部）
         btn_frame = ttk.Frame(main_frame)
@@ -151,50 +159,9 @@ class SunSpecGUI:
         self.table_frames = {}
         self.read_all_btns = {}  # 保存每个表格的读全部按钮
 
+        # 初始创建默认表格页
         for table_id in [802, 805, 899]:
-            # 创建标签页
-            tab_frame = ttk.Frame(self.notebook)
-            self.notebook.add(tab_frame, text=f"{self.language_manager.get_text('table')}{table_id}")
-            self.table_frames[table_id] = tab_frame
-
-            # 按钮区（只保留读全部）
-            btn_frame = ttk.Frame(tab_frame)
-            btn_frame.pack(fill=tk.X, anchor="w", pady=(5, 0))
-            read_all_btn = ttk.Button(btn_frame, text=self.language_manager.get_text("read_all"), 
-                                 command=lambda tid=table_id: self.read_table(tid))
-            read_all_btn.pack(side=tk.LEFT)
-            self.read_all_btns[table_id] = read_all_btn  # 保存按钮引用
-
-            # 内容区+滚动条
-            content_frame = ttk.Frame(tab_frame)
-            content_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
-
-            canvas = tk.Canvas(content_frame)
-            scrollbar = ttk.Scrollbar(content_frame, orient="vertical", command=canvas.yview)
-            scrollable_frame = ttk.Frame(canvas)
-
-            canvas_window_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-
-            scrollable_frame.bind(
-                "<Configure>",
-                lambda e, c=canvas: c.configure(scrollregion=c.bbox("all"))
-            )
-            
-            def on_canvas_configure(event, canvas=canvas, window_id=canvas_window_id, sf=scrollable_frame):
-                canvas.itemconfig(window_id, width=event.width)
-                sf.configure(width=event.width)
-                canvas.configure(scrollregion=canvas.bbox("all"))
-            
-            canvas.bind('<Configure>', on_canvas_configure)
-            canvas.configure(yscrollcommand=scrollbar.set)
-
-            canvas.pack(side="left", fill="both", expand=True)
-            scrollbar.pack(side="right", fill="y")
-
-            dt = DataTableFrame(scrollable_frame, table_id, self.sunspec_protocol, 
-                              self.modbus_client, main_window=self, language_manager=self.language_manager)
-            dt.pack(fill=tk.BOTH, expand=True)
-            self.data_tables[table_id] = dt
+            self.create_table_tab(table_id)
 
         # 日志框
         self.log_frame = ttk.LabelFrame(main_frame, text=self.language_manager.get_text("log"), padding=5)
@@ -282,8 +249,20 @@ class SunSpecGUI:
 
     def update_table_titles(self):
         """更新表格标题"""
-        for i, table_id in enumerate([802, 805, 899]):
-            self.notebook.tab(i, text=f"{self.language_manager.get_text('table')}{table_id}")
+        # 遍历所有已存在的表格页
+        for i in range(self.notebook.index("end")):
+            tab_text = self.notebook.tab(i, "text")
+            # 从标签文本中提取表格ID
+            import re
+            match = re.search(r'(\d+)', tab_text)
+            if match:
+                table_id = int(match.group(1))
+                # 获取当前地址显示
+                if hasattr(self, 'model_base_addrs') and table_id in self.model_base_addrs:
+                    addr_text = str(self.model_base_addrs[table_id])
+                else:
+                    addr_text = "-"
+                self.notebook.tab(i, text=f"{self.language_manager.get_text('table')}{table_id}({self.language_manager.get_text('addr')}: {addr_text})")
 
     def update_log_area_text(self):
         """更新日志区域的文本"""
@@ -324,6 +303,55 @@ class SunSpecGUI:
         
         # 更新连接框架的按钮状态
         self.connection_frame.update_buttons_state(is_connected)
+
+    def create_table_tab(self, table_id):
+        """创建单个表格标签页"""
+        if table_id in self.table_frames:
+            return  # 已存在，不重复创建
+            
+        # 创建标签页
+        tab_frame = ttk.Frame(self.notebook)
+        self.notebook.add(tab_frame, text=f"{self.language_manager.get_text('table')}{table_id}({self.language_manager.get_text('addr')}: -)")
+        self.table_frames[table_id] = tab_frame
+
+        # 按钮区（只保留读全部）
+        btn_frame = ttk.Frame(tab_frame)
+        btn_frame.pack(fill=tk.X, anchor="w", pady=(5, 0))
+        read_all_btn = ttk.Button(btn_frame, text=self.language_manager.get_text("read_all"), 
+                             command=lambda tid=table_id: self.read_table(tid))
+        read_all_btn.pack(side=tk.LEFT)
+        self.read_all_btns[table_id] = read_all_btn  # 保存按钮引用
+
+        # 内容区+滚动条
+        content_frame = ttk.Frame(tab_frame)
+        content_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
+
+        canvas = tk.Canvas(content_frame)
+        scrollbar = ttk.Scrollbar(content_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        canvas_window_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e, c=canvas: c.configure(scrollregion=c.bbox("all"))
+        )
+        
+        def on_canvas_configure(event, canvas=canvas, window_id=canvas_window_id, sf=scrollable_frame):
+            canvas.itemconfig(window_id, width=event.width)
+            sf.configure(width=event.width)
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        canvas.bind('<Configure>', on_canvas_configure)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        dt = DataTableFrame(scrollable_frame, table_id, self.sunspec_protocol, 
+                          self.modbus_client, main_window=self, language_manager=self.language_manager)
+        dt.pack(fill=tk.BOTH, expand=True)
+        self.data_tables[table_id] = dt
 
     def get_default_log_file(self):
         """获取默认日志文件路径"""
@@ -463,8 +491,11 @@ class SunSpecGUI:
                                  self.language_manager.get_text("please_connect_first"))
             return
         self.log_message(self.language_manager.get_text("start_reading_all"))
-        for table_id in [802, 805, 899]:
+        
+        # 读取所有已创建的表格页对应的表格
+        for table_id in self.data_tables.keys():
             self.read_table(table_id)
+            
         self.log_message(self.language_manager.get_text("all_tables_read_complete"))
 
     def read_table(self, table_id):
@@ -551,19 +582,31 @@ class SunSpecGUI:
                 self.log_message("模型链表结束")
                 break
 
-            if model_id in [802, 805, 899]:
-                model_map[model_id] = addr
-                self.sunspec_protocol.set_model_base_address(model_id, addr)
+            #if model_id in [802, 805, 899]:
+            model_map[model_id] = addr
+            self.sunspec_protocol.set_model_base_address(model_id, addr)
 
             addr = addr + 2 + model_len
 
         # 更新GUI显示
-        self.model_802_addr_var.set(str(model_map.get(802, "-")))
-        self.model_805_addr_var.set(str(model_map.get(805, "-")))
-        self.model_899_addr_var.set(str(model_map.get(899, "-")))
+        #self.model_802_addr_var.set(str(model_map.get(802, "-")))
+        #self.model_805_addr_var.set(str(model_map.get(805, "-")))
+        #self.model_899_addr_var.set(str(model_map.get(899, "-")))
 
         self.model_base_addrs = model_map
         self.log_message(f"{self.language_manager.get_text('scan_complete')}，找到模型: {list(model_map.keys())}")
+
+        # 为新发现的模型创建表格页
+        for model_id in model_map.keys():
+            if model_id not in self.table_frames:
+                self.create_table_tab(model_id)
+                self.log_message(f"创建新表格页: 模型{model_id}")
+
+        # 更新标签页标题显示地址
+        self.update_table_titles()
+
+        # 重新加载模型，只加载扫描到的模型
+        self.sunspec_protocol.load_models(available_models=list(model_map.keys()))
 
     def on_auto_read_all_changed(self):
         """自动读取全部表格勾选框状态改变时的处理"""
