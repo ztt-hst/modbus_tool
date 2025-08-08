@@ -108,18 +108,11 @@ class DataTableFrame(ttk.Frame):
             return
         
         # 检查模型是否扫描
-        if self.main_window and hasattr(self.main_window, 'model_base_addrs'):
-            if self.table_id in self.main_window.model_base_addrs:
-                base_addr = self.main_window.model_base_addrs[self.table_id]
-            else:
-                messagebox.showwarning(self.language_manager.get_text("warning"), 
-                                        self.language_manager.get_text("please_scan_model_addr_first"))
-                return 
-        else:
+        if self.main_window and not getattr(self.main_window, 'is_scan_model_addr', False):
             messagebox.showwarning(self.language_manager.get_text("warning"), 
-                                    self.language_manager.get_text("please_scan_model_addr_first"))
-            return 
-        
+                                self.language_manager.get_text("please_scan_model_addr_first"))
+            return     
+        base_addr = self.main_window.model_base_addrs[self.table_id]     
         offset = self.fields[field_name]["offset"]
         addr = base_addr + offset
         length = self.fields[field_name]["size"]
@@ -147,19 +140,12 @@ class DataTableFrame(ttk.Frame):
                                  self.language_manager.get_text("please_connect_first"))
             return
         
-        # 检查是否扫描模型地址
-        if self.main_window and hasattr(self.main_window, 'model_base_addrs'):
-            if self.table_id in self.main_window.model_base_addrs:
-                base_addr = self.main_window.model_base_addrs[self.table_id]
-            else:
-                messagebox.showwarning(self.language_manager.get_text("warning"), 
-                                        self.language_manager.get_text("please_scan_model_addr_first"))
-                return 
-        else:
+        # 检查模型是否扫描
+        if self.main_window and not getattr(self.main_window, 'is_scan_model_addr', False):
             messagebox.showwarning(self.language_manager.get_text("warning"), 
-                                    self.language_manager.get_text("please_scan_model_addr_first"))
-            return 
-        
+                                self.language_manager.get_text("please_scan_model_addr_first"))
+            return  
+        base_addr = self.main_window.model_base_addrs[self.table_id]   
         offset = self.fields[field_name]["offset"]
         addr = base_addr + offset
         value_str = self.entries[field_name][2].get()

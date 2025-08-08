@@ -49,7 +49,8 @@ class SunSpecGUI:
         self.current_table = 802
         self.auto_refresh = False
         self.refresh_thread = None
-        
+        self.is_scan_base_addr = False
+        self.is_scan_model_addr = False
         # 新增：日志文件相关
         self.log_file_path = self.get_default_log_file()
         self.log_file_var = None  # 将在setup_gui中设置
@@ -123,20 +124,6 @@ class SunSpecGUI:
                   command=self.scan_models)
         self.scan_model_btn.pack(side=tk.LEFT, padx=(10, 0))
         
-        #self.model_802_label = ttk.Label(scan_frame, text="802:")
-        #self.model_802_label.pack(side=tk.LEFT)
-        #self.model_802_addr_var = tk.StringVar(value="-")
-        #ttk.Entry(scan_frame, textvariable=self.model_802_addr_var, width=8, state="readonly").pack(side=tk.LEFT)
-        
-        #self.model_805_label = ttk.Label(scan_frame, text="805:")
-        #self.model_805_label.pack(side=tk.LEFT)
-        #self.model_805_addr_var = tk.StringVar(value="-")
-        #ttk.Entry(scan_frame, textvariable=self.model_805_addr_var, width=8, state="readonly").pack(side=tk.LEFT)
-        
-        #self.model_899_label = ttk.Label(scan_frame, text="899:")
-        #self.model_899_label.pack(side=tk.LEFT)
-        #self.model_899_addr_var = tk.StringVar(value="-")
-        #ttk.Entry(scan_frame, textvariable=self.model_899_addr_var, width=8, state="readonly").pack(side=tk.LEFT)
 
         # 总控按钮（只保留读取全部）
         btn_frame = ttk.Frame(main_frame)
@@ -494,14 +481,63 @@ class SunSpecGUI:
         self.modbus_client.disconnect()
         self.status_var.set(self.language_manager.get_text("disconnected"))
         self.log_message(self.language_manager.get_text("disconnected"))
+        #取消勾选自动读取
+        self.auto_read_all_var.set(False)
+        self.on_auto_read_all_changed()
+        
+        # 清除扫描到的基地址和模型地址
+        self.clear_scanned_addresses()
+        
+        # 重新初始化表格页面
+        self.reinitialize_table_pages()
         
         # 更新按钮状态
         self.update_connection_buttons_state()
+    
+    def clear_scanned_addresses(self):
+        """清除扫描到的基地址和模型地址"""
+        # 重置扫描状态标志
+        self.is_scan_base_addr = False
+        self.is_scan_model_addr = False
+        
+        # 清除基地址显示
+        self.base_addr_var.set(self.language_manager.get_text("not_scanned"))
+        
+        # 清除协议中的基地址
+        if hasattr(self.sunspec_protocol, 'base_address'):
+            self.sunspec_protocol.base_address = None
+            
+        # 清除模型地址映射
+        if hasattr(self, 'model_base_addrs'):
+            self.model_base_addrs.clear()
+            
+        self.log_message("已清除扫描到的基地址和模型地址")
+    
+    def reinitialize_table_pages(self):
+        """重新初始化表格页面"""
+        # 清除所有现有的表格页
+        for i in range(self.notebook.index("end")):
+            self.notebook.forget(0)
+            
+        # 清除表格相关的数据结构
+        self.data_tables.clear()
+        self.table_frames.clear()
+        self.read_all_btns.clear()
+        
+        # 重新创建默认表格页（802, 805, 899）
+        for table_id in [802, 805, 899]:
+            self.create_table_tab(table_id)
+            
+        self.log_message("已重新初始化表格页面")
 
     def read_all_tables(self):
         if not self.modbus_client.is_connected():
             messagebox.showwarning(self.language_manager.get_text("warning"), 
                                  self.language_manager.get_text("please_connect_first"))
+            return
+        if self.is_scan_model_addr == False:
+            messagebox.showwarning(self.language_manager.get_text("warning"), 
+                                    self.language_manager.get_text("please_scan_model_addr_first"))
             return
         self.log_message(self.language_manager.get_text("start_reading_all"))
         
@@ -519,21 +555,18 @@ class SunSpecGUI:
             self.log_message(f"未连接")
             return
         
-        # 检查模型是否已扫描
-        if not hasattr(self, 'model_base_addrs') or table_id not in self.model_base_addrs:
+        if self.is_scan_model_addr == False:
             messagebox.showwarning(self.language_manager.get_text("warning"), 
-                                 self.language_manager.get_text("please_scan_model_addr_first"))
-            self.log_message(f"模型{table_id}地址未扫描")
-            return
-        
+                                    self.language_manager.get_text("please_scan_model_addr_first"))
+            return 
         # 获取基地址
         base_addr = self.model_base_addrs[table_id]
         self.log_message(f"读取表格{table_id}，使用扫描地址: {base_addr}")
         
         # 检查模型是否已加载
-        if table_id not in self.sunspec_protocol.models:
-            self.log_message(f"模型{table_id}未加载")
-            return
+        #if table_id not in self.sunspec_protocol.models:
+            #self.log_message(f"模型{table_id}未加载")
+            #return
         
         table_info = self.sunspec_protocol.get_table_info(table_id)
         if not table_info:
@@ -577,6 +610,7 @@ class SunSpecGUI:
                         messagebox.showinfo(self.language_manager.get_text("scan_success"), 
                                           f"{self.language_manager.get_text('found_sunspec_base')}: {addr}")
                         found = True
+                        self.scan_base_address = True
                         break
                 except Exception as e:
                     self.log_message(f"地址{addr}解析失败: {e}")
@@ -592,7 +626,10 @@ class SunSpecGUI:
             messagebox.showwarning(self.language_manager.get_text("warning"), 
                                  self.language_manager.get_text("please_connect_first"))
             return
-
+        if self.scan_base_address == False:
+            messagebox.showwarning(self.language_manager.get_text("warning"), 
+                                    self.language_manager.get_text("please_scan_base_addr_first"))
+            return
         base_addr = self.sunspec_protocol.base_address
         addr = base_addr + 2  # Skip "SunS" (ID and Length of SunSpec Common Model)
         model_map = {}
@@ -607,6 +644,7 @@ class SunSpecGUI:
             self.log_message(f"模型ID: {model_id} LEN: {model_len} @ {addr}")
 
             if model_id == 0xFFFF and model_len == 0:
+                self.is_scan_model_addr = True
                 self.log_message("模型链表结束")
                 break
 
@@ -644,6 +682,13 @@ class SunSpecGUI:
 
     def start_auto_read_all(self):
         """启动自动读取全部表格"""
+        if self.is_scan_model_addr == False :
+            #取消勾选自动读取
+            self.auto_read_all_var.set(False)
+            self.on_auto_read_all_changed()
+            messagebox.showwarning(self.language_manager.get_text("warning"), 
+                                    self.language_manager.get_text("please_scan_model_addr_first"))
+            return 
         self._auto_read_all_running = True
         self.schedule_auto_read_all()
 
