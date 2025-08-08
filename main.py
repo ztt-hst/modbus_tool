@@ -17,18 +17,6 @@ from modbus_client import ModbusClient
 from gui_components import ConnectionFrame, DataTableFrame
 from language_manager import LanguageManager
 
-def get_resource_path(filename):
-        """
-        获取资源文件路径，兼容开发环境和PyInstaller打包后的环境
-        """
-        if getattr(sys, 'frozen', False):
-            # PyInstaller打包后的exe
-            base_path = sys._MEIPASS
-        else:
-            # 源码运行
-            base_path = os.path.abspath(".")
-        return os.path.join(base_path, filename)
-
 class SunSpecGUI:
     """SunSpec协议GUI界面"""
     
@@ -72,13 +60,27 @@ class SunSpecGUI:
         """设置窗口图标"""
         try:
             # 获取图标文件路径
-            icon_path = get_resource_path('BQC.ico')        
+            icon_path = self.get_resource_path('BQC.ico')
+            
             if os.path.exists(icon_path):
                 self.root.iconbitmap(icon_path)
             else:
                 print(f"图标文件不存在: {icon_path}")
         except Exception as e:
             print(f"设置窗口图标失败: {e}")
+
+    def get_resource_path(self, filename):
+        """获取资源文件路径，支持打包后的路径"""
+        import sys
+        import os
+        
+        if getattr(sys, 'frozen', False):
+            # 如果是打包后的exe
+            base_path = sys._MEIPASS
+            return os.path.join(base_path, filename)
+        else:
+            # 如果是开发环境
+            return filename
 
     def setup_gui(self):
         """设置GUI界面"""
@@ -308,6 +310,17 @@ class SunSpecGUI:
         """创建单个表格标签页"""
         if table_id in self.table_frames:
             return  # 已存在，不重复创建
+        
+        # 检查模型是否已加载
+        if table_id not in self.sunspec_protocol.models:
+            print(f"警告：尝试创建未加载的模型{table_id}的标签页")
+            return
+        
+        # 检查模型是否有有效的字段信息
+        table_info = self.sunspec_protocol.get_table_info(table_id)
+        if not table_info or not table_info.get("fields"):
+            print(f"警告：模型{table_id}没有有效的字段信息")
+            return
             
         # 创建标签页
         tab_frame = ttk.Frame(self.notebook)
@@ -318,7 +331,7 @@ class SunSpecGUI:
         btn_frame = ttk.Frame(tab_frame)
         btn_frame.pack(fill=tk.X, anchor="w", pady=(5, 0))
         read_all_btn = ttk.Button(btn_frame, text=self.language_manager.get_text("read_all"), 
-                             command=lambda tid=table_id: self.read_table(tid))
+                         command=lambda tid=table_id: self.read_table(tid))
         read_all_btn.pack(side=tk.LEFT)
         self.read_all_btns[table_id] = read_all_btn  # 保存按钮引用
 
@@ -503,24 +516,39 @@ class SunSpecGUI:
         if not self.modbus_client.is_connected():
             messagebox.showwarning(self.language_manager.get_text("warning"), 
                                  self.language_manager.get_text("please_connect_first"))
+            self.log_message(f"未连接")
             return
         
-        # 使用扫描到的模型地址
-        if hasattr(self, 'model_base_addrs') and table_id in self.model_base_addrs:
-            base_addr = self.model_base_addrs[table_id]
-            self.log_message(f"读取表格{table_id}，使用扫描地址: {base_addr}")
-        else:
-            # 如果没有扫描到，使用默认基地址
-            base_addr = self.sunspec_protocol.base_address
-            self.log_message(f"读取表格{table_id}，使用默认基地址: {base_addr}")
+        # 检查模型是否已扫描
+        if not hasattr(self, 'model_base_addrs') or table_id not in self.model_base_addrs:
+            messagebox.showwarning(self.language_manager.get_text("warning"), 
+                                 self.language_manager.get_text("please_scan_model_addr_first"))
+            self.log_message(f"模型{table_id}地址未扫描")
+            return
+        
+        # 获取基地址
+        base_addr = self.model_base_addrs[table_id]
+        self.log_message(f"读取表格{table_id}，使用扫描地址: {base_addr}")
+        
+        # 检查模型是否已加载
+        if table_id not in self.sunspec_protocol.models:
+            self.log_message(f"模型{table_id}未加载")
+            return
         
         table_info = self.sunspec_protocol.get_table_info(table_id)
+        if not table_info:
+            self.log_message(f"获取表格{table_id}信息失败")
+            return
+            
         length = table_info["length"]
         data = self.modbus_client.read_holding_registers(base_addr, length)
         if data:
             parsed = self.sunspec_protocol.parse_table_data(table_id, data)
-            self.data_tables[table_id].display_data(parsed)
-            self.log_message(f"表格{table_id}读取成功")
+            if parsed and table_id in self.data_tables:
+                self.data_tables[table_id].display_data(parsed)
+                self.log_message(f"表格{table_id}读取成功")
+            else:
+                self.log_message(f"表格{table_id}解析失败")
         else:
             self.log_message(f"表格{table_id}读取失败")
 
@@ -582,31 +610,30 @@ class SunSpecGUI:
                 self.log_message("模型链表结束")
                 break
 
-            #if model_id in [802, 805, 899]:
             model_map[model_id] = addr
             self.sunspec_protocol.set_model_base_address(model_id, addr)
 
             addr = addr + 2 + model_len
 
-        # 更新GUI显示
-        #self.model_802_addr_var.set(str(model_map.get(802, "-")))
-        #self.model_805_addr_var.set(str(model_map.get(805, "-")))
-        #self.model_899_addr_var.set(str(model_map.get(899, "-")))
-
         self.model_base_addrs = model_map
         self.log_message(f"{self.language_manager.get_text('scan_complete')}，找到模型: {list(model_map.keys())}")
 
-        # 为新发现的模型创建表格页
+        # 先重新加载模型，只加载扫描到的模型
+        self.sunspec_protocol.load_models(available_models=list(model_map.keys()))
+
+        # 然后为新发现的模型创建表格页（只对有JSON文件的模型）
         for model_id in model_map.keys():
             if model_id not in self.table_frames:
-                self.create_table_tab(model_id)
-                self.log_message(f"创建新表格页: 模型{model_id}")
+                # 检查模型是否成功加载（即有对应的JSON文件）
+                if model_id in self.sunspec_protocol.models:
+                    self.create_table_tab(model_id)
+                    self.log_message(f"创建新表格页: 模型{model_id}")
+                else:
+                    self.log_message(f"跳过模型{model_id}：未找到对应的JSON文件")
 
         # 更新标签页标题显示地址
         self.update_table_titles()
 
-        # 重新加载模型，只加载扫描到的模型
-        self.sunspec_protocol.load_models(available_models=list(model_map.keys()))
 
     def on_auto_read_all_changed(self):
         """自动读取全部表格勾选框状态改变时的处理"""

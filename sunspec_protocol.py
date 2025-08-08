@@ -20,11 +20,10 @@ class SunSpecProtocol:
     def load_models(self, available_models=None):
         """
         加载模型定义。
-        available_models: 可用模型ID列表（如[1, 802, 805, 899]），为None时加载全部支持的。
+        available_models: 可用模型ID列表（如[ 802, 805, 899]），为None时加载全部支持的。
         """
         # 支持的模型及其文件名
         default_model_files = {
-            1: 'model_1.json',
             802: 'model_802.json',
             805: 'model_805.json',
             899: 'model_899.json'
@@ -126,6 +125,13 @@ class SunSpecProtocol:
                         chars.append(chr((reg >> 8) & 0xFF))
                     value = ''.join(chars).rstrip('\x00').strip()
                     raw_value = value
+                elif field_type == "hex":
+                    # hex类型：直接显示16进制数据
+                    hex_values = []
+                    for reg in regs:
+                        hex_values.append(f"{reg:04X}")
+                    value = ' '.join(hex_values)  # 用空格分隔多个寄存器
+                    raw_value = value
                 else:
                     # 其他类型直接显示原始
                     value = regs[0]
@@ -218,6 +224,14 @@ class SunSpecProtocol:
                         chars.append(chr(reg & 0xFF))
                         chars.append(chr((reg >> 8) & 0xFF))
                     value = ''.join(chars).rstrip('\x00').strip()
+                    raw_value = value
+                    
+                elif field_type == "hex":
+                    # hex类型：直接显示16进制数据
+                    hex_values = []
+                    for reg in data:
+                        hex_values.append(f"{reg:04X}")
+                    value = ' '.join(hex_values)  # 用空格分隔多个寄存器
                     raw_value = value
                     
                 else:

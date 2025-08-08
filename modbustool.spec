@@ -7,9 +7,11 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
+        ('model_1.json', '.'),
         ('model_802.json', '.'),
         ('model_805.json', '.'),
         ('model_899.json', '.'),
+        ('model_64001.json', '.'),
         ('BQC.ico', '.'),  # 添加图标文件到数据文件
     ],
     hiddenimports=[

@@ -28,7 +28,11 @@ class DataTableFrame(ttk.Frame):
         self.modbus_client = modbus_client
         self.main_window = main_window
         self.language_manager = language_manager or LanguageManager()
-        self.fields = protocol.get_table_info(table_id)["fields"]
+        
+        # 直接获取字段信息，因为只有有JSON文件的模型才会创建DataTableFrame
+        table_info = protocol.get_table_info(table_id)
+        self.fields = table_info["fields"]
+        
         self.entries = {}
         self.headers = []  # 保存表头引用
         self.setup_table()
@@ -103,14 +107,18 @@ class DataTableFrame(ttk.Frame):
                                  self.language_manager.get_text("please_connect_first"))
             return
         
-        # 修正：从主窗口获取扫描到的模型地址
+        # 检查模型是否扫描
         if self.main_window and hasattr(self.main_window, 'model_base_addrs'):
             if self.table_id in self.main_window.model_base_addrs:
                 base_addr = self.main_window.model_base_addrs[self.table_id]
             else:
-                base_addr = self.protocol.base_address
+                messagebox.showwarning(self.language_manager.get_text("warning"), 
+                                        self.language_manager.get_text("please_scan_model_addr_first"))
+                return 
         else:
-            base_addr = self.protocol.base_address
+            messagebox.showwarning(self.language_manager.get_text("warning"), 
+                                    self.language_manager.get_text("please_scan_model_addr_first"))
+            return 
         
         offset = self.fields[field_name]["offset"]
         addr = base_addr + offset
@@ -139,14 +147,18 @@ class DataTableFrame(ttk.Frame):
                                  self.language_manager.get_text("please_connect_first"))
             return
         
-        # 修正：从主窗口获取扫描到的模型地址
+        # 检查是否扫描模型地址
         if self.main_window and hasattr(self.main_window, 'model_base_addrs'):
             if self.table_id in self.main_window.model_base_addrs:
                 base_addr = self.main_window.model_base_addrs[self.table_id]
             else:
-                base_addr = self.protocol.base_address
+                messagebox.showwarning(self.language_manager.get_text("warning"), 
+                                        self.language_manager.get_text("please_scan_model_addr_first"))
+                return 
         else:
-            base_addr = self.protocol.base_address
+            messagebox.showwarning(self.language_manager.get_text("warning"), 
+                                    self.language_manager.get_text("please_scan_model_addr_first"))
+            return 
         
         offset = self.fields[field_name]["offset"]
         addr = base_addr + offset
